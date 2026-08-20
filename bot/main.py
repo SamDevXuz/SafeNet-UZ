@@ -49,19 +49,6 @@ async def main() -> None:
     bot = Bot(token=settings.bot_token.get_secret_value())
     dp = Dispatcher()
 
-    if settings.log_level_upper == "DEBUG":
-        from aiogram import BaseMiddleware
-        from aiogram.types import Update as UpdateType
-
-        class _UpdateLogger(BaseMiddleware):
-            async def __call__(self, handler, event, data):
-                if isinstance(event, UpdateType):
-                    payload = event.model_dump(exclude_none=True)
-                    logging.warning("APIDEBUG IN update=%s", str(payload)[:1200])
-                return await handler(event, data)
-
-        dp.update.outer_middleware(_UpdateLogger())
-
     dp.include_router(start.router)
     dp.include_router(mirror.router)
     dp.include_router(analyze.router)
