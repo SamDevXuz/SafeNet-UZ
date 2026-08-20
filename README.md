@@ -39,6 +39,7 @@
 | 📚 Global blacklists | Crowdsourced denial-of-service for phishing networks |
 | 🤖 Telegram-first UX | Zero-install reporting via [Aiogram 3.x](https://docs.aiogram.dev) |
 | ⚡ Async by design | Non-blocking analysis with `httpx` + `asyncio` |
+| 🔁 Mirror bots | Community Telegram bots join the network via `/addbot` and share the same analyzers + database |
 
 ## Architecture
 
@@ -62,8 +63,9 @@ flowchart LR
 ```
 safenetuz/
 ├── .github/workflows/ci.yml   # CI pipeline
+├── assets/logo.jpg             # Bot profile logo (png/jpg/jpeg qabul qilinadi, kvadratga aylantiriladi)
 ├── bot/
-│   ├── handlers/              # Telegram message handlers
+│   ├── handlers/              # Telegram message handlers (+ /addbot mirror flow)
 │   ├── middlewares/           # Bot middlewares
 │   └── main.py                # Async entry point
 ├── analyzer/
@@ -71,7 +73,9 @@ safenetuz/
 │   ├── url_parser.py          # URL normalization & parsing
 │   └── whois_checker.py       # WHOIS enrichment
 ├── core/
-│   └── config.py              # Typed, validated settings
+│   ├── config.py              # Typed, validated settings
+│   ├── database.py            # Shared SQLite layer (mirror bots + analyses)
+│   └── mirror_manager.py      # Mirror bot validation, branding & runtime
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
@@ -114,6 +118,17 @@ GOOGLE_SAFEBROWSING_API_KEY=
 
 > `bot_token` is required and stored as a `SecretStr` — it is never logged or exposed.
 > All threat-intelligence keys are **optional**: without them the bot gracefully skips those checks (`status: skipped`) instead of failing.
+
+### Mirror bots (`/addbot`)
+
+Any Telegram bot owner can expand the SafeNet UZ network. From the main bot, send `/addbot` and paste a token from [@BotFather](https://t.me/BotFather). `MirrorManager` will:
+
+1. Validate the token via `get_me()`.
+2. Set SafeNet UZ branding: commands, description, short description and `assets/logo.{png,jpg,jpeg}` as profile photo (any format is auto-cropped to a square 640×640 via Pillow).
+3. Register the bot for **dynamic polling** (default) or a **webhook** when `MIRROR_WEBHOOK_DOMAIN` is configured (`https://<domain>/webhook/mirror/<token>`).
+4. Persist an entry in the shared SQLite database (`token` is stored **hashed** only).
+
+Every message received by a mirror bot is routed through the same `start` / `mirror` / `analyze` routers, so reports are analyzed identically and recorded in the **single shared database** with the main bot.
 
 ### Threat intelligence sources
 

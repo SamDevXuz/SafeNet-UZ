@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     virustotal_api_key: Optional[str] = None
     urlhaus_api_key: Optional[str] = None
     google_safebrowsing_api_key: Optional[str] = None
+    database_path: str = "data/safenetuz.db"
+    mirror_webhook_domain: Optional[str] = None
+    mirror_bots: str = ""
 
     @property
     def log_level_upper(self) -> str:

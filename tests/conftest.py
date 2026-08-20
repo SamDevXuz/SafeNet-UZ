@@ -3,10 +3,20 @@ from types import SimpleNamespace
 import pytest
 
 
+def default_user() -> SimpleNamespace:
+    return SimpleNamespace(id=1, username="test_user", first_name="Test")
+
+
 class FakeMessage:
-    def __init__(self, text: str | None = None, caption: str | None = None) -> None:
+    def __init__(
+        self,
+        text: str | None = None,
+        caption: str | None = None,
+        from_user: object | None = None,
+    ) -> None:
         self.text = text
         self.caption = caption
+        self.from_user = from_user if from_user is not None else default_user()
         self.replies: list[tuple[str, str | None]] = []
         self.edits: list[tuple[str, str | None]] = []
 

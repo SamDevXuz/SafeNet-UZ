@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 
 from aiogram import Router
@@ -121,3 +122,25 @@ async def analyze_url(message: Message) -> None:
         format_report(raw_url, parsed.hostname, vt_result, uh_result, gsb_result),
         parse_mode="Markdown",
     )
+
+    await _record_analysis(raw_url, parsed.hostname, vt_result, uh_result, gsb_result, message)
+
+
+async def _record_analysis(
+    url: str, hostname: str, vt: dict, urlhaus: dict, gsb: dict, message: Message
+) -> None:
+    try:
+        from core.database import get_database
+
+        author = getattr(message, "from_user", None)
+        username = getattr(author, "username", None) if author else None
+        await get_database().record_analysis(
+            url=url,
+            hostname=hostname,
+            verdict=_build_verdict(vt, urlhaus, gsb),
+            source_bot_username=username,
+        )
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Analiz natijasi bazaga yozilmadi: %s", url, exc_info=True
+        )

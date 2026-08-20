@@ -90,6 +90,11 @@ out/
 # Docker
 docker-volumes/
 
+# Runtime data (SQLite bazalar)
+data/
+*.db
+*.db-*
+
 # System
 core.[0-9]*
 *.pid
