@@ -44,6 +44,7 @@ class MirrorManager:
         self._routers = list(routers)
         self._webhook_domain = (webhook_domain or "").rstrip("/")
         self._bots: dict[str, Bot] = {}
+        self._dispatchers: dict[str, Dispatcher] = {}
         self._tasks: list[asyncio.Task] = []
 
     @property
@@ -99,6 +100,8 @@ class MirrorManager:
                 await bot.session.close()
                 raise MirrorSetupError("Webhook o'rnatishda xatolik yuz berdi.") from exc
             mode = "webhook"
+            dp = self._build_dispatcher()
+            self._dispatchers[bot_token] = dp
         else:
             await self._start_polling(bot)
             mode = "polling"
@@ -179,12 +182,23 @@ class MirrorManager:
         return tmp
 
     async def _start_polling(self, bot: Bot) -> None:
-        dp = Dispatcher()
-        for router in self._routers:
-            dp.include_router(router)
+        dp = self._build_dispatcher()
         task = asyncio.create_task(dp.start_polling(bot))
         task.add_done_callback(self._on_polling_done)
         self._tasks.append(task)
+
+    def _build_dispatcher(self) -> Dispatcher:
+        dp = Dispatcher()
+        for router in self._routers:
+            dp.include_router(router)
+        return dp
+
+    async def feed_update(self, bot_token: str, update) -> bool:
+        dp = self._dispatchers.get(bot_token)
+        if dp is None:
+            return False
+        await dp.feed_update(self._bots[bot_token], update)
+        return True
 
     def _on_polling_done(self, task: asyncio.Task) -> None:
         if task.cancelled():

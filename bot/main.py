@@ -53,9 +53,19 @@ async def main() -> None:
     dp.include_router(mirror.router)
     dp.include_router(analyze.router)
 
+    webhook_task: asyncio.Task | None = None
+    if settings.mirror_webhook_domain:
+        from core.webhook import run_webhook_server
+
+        webhook_task = asyncio.create_task(
+            run_webhook_server(manager, port=settings.webhook_port)
+        )
+
     try:
         await dp.start_polling(bot)
     finally:
+        if webhook_task is not None:
+            webhook_task.cancel()
         await manager.stop()
         await bot.session.close()
         await database.close()

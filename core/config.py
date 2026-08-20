@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     cache_ttl_malicious: int = 2592000
     mirror_webhook_domain: Optional[str] = None
     mirror_bots: str = ""
+    webhook_port: int = 8000
     group_guard_block_apk: bool = True
     group_guard_warning_ttl: int = 15
 
