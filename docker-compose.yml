@@ -1,0 +1,15 @@
+services:
+  bot:
+    build: .
+    container_name: safenetuz-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    networks:
+      - safenetuz
+
+networks:
+  safenetuz:
+    driver: bridge
