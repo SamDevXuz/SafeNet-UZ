@@ -1,7 +1,7 @@
 import re
 
 from aiogram import F, Router
-from aiogram.filters import Command
+from aiogram.filters import BaseFilter, Command
 from aiogram.types import Message
 
 from core.mirror_manager import MirrorSetupError, TOKEN_PATTERN, get_mirror_manager
@@ -9,6 +9,11 @@ from core.mirror_manager import MirrorSetupError, TOKEN_PATTERN, get_mirror_mana
 router = Router(name="mirror")
 
 _pending_users: set[int] = set()
+
+
+class _OnlyPendingFilter(BaseFilter):
+    async def __call__(self, message: Message) -> bool:
+        return message.from_user.id in _pending_users
 
 
 @router.message(Command("addbot"))
@@ -24,7 +29,7 @@ async def add_bot(message: Message) -> None:
     )
 
 
-@router.message(F.text)
+@router.message(F.text, _OnlyPendingFilter())
 async def handle_bot_token(message: Message) -> None:
     user_id = message.from_user.id
     if user_id not in _pending_users:
