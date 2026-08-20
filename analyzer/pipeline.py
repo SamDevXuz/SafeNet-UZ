@@ -33,6 +33,7 @@ class URLScanResult:
     virustotal: dict
     urlhaus: dict
     google_safebrowsing: dict
+    heuristic: dict | None = None
     record_id: int | None = None
 
 
@@ -87,6 +88,7 @@ def _payload_for(
         "virustotal": result.virustotal,
         "urlhaus": result.urlhaus,
         "google_safebrowsing": result.google_safebrowsing,
+        "heuristic": result.heuristic or {},
     }
 
 
@@ -101,6 +103,7 @@ def _result_from_payload(payload: dict, url: str) -> URLScanResult:
         virustotal=payload.get("virustotal") or {},
         urlhaus=payload.get("urlhaus") or {},
         google_safebrowsing=payload.get("google_safebrowsing") or {},
+        heuristic=payload.get("heuristic") or None,
     )
 
 
@@ -141,6 +144,7 @@ async def check_url(
                 virustotal={},
                 urlhaus={},
                 google_safebrowsing={},
+                heuristic=None,
                 record_id=record.id,
             )
             if cache is not None:
@@ -177,6 +181,7 @@ async def check_url(
                     virustotal=cached_result.virustotal,
                     urlhaus=cached_result.urlhaus,
                     google_safebrowsing=cached_result.google_safebrowsing,
+                    heuristic=cached_result.heuristic,
                     record_id=record.id,
                 )
             except Exception:
@@ -190,6 +195,8 @@ async def check_url(
 
     status = status_from_verdict(result.verdict)
     threat_type = _threat_type_from(result.google_safebrowsing, result.urlhaus)
+    if threat_type is None and result.heuristic and result.heuristic.get("level") == "dangerous":
+        threat_type = THREAT_PHISHING
     record_id = None
     if database is not None:
         try:
@@ -220,6 +227,7 @@ async def check_url(
         virustotal=result.virustotal,
         urlhaus=result.urlhaus,
         google_safebrowsing=result.google_safebrowsing,
+        heuristic=result.heuristic,
         record_id=record_id,
     )
 

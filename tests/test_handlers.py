@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import bot.handlers.analyze as analyze_module
 import bot.handlers.start as start_module
 from analyzer.analysis import verdict_code
@@ -199,3 +201,73 @@ def test_analyze_url_regex_matches():
     assert _URL_RE.search("www.example.com/x") is not None
     assert _URL_RE.search("ttps://no.com") is None
     assert _URL_RE.search("https://") is None
+
+# ---------- format_report: heuristic ----------
+
+
+def test_format_report_with_heuristic_line():
+    heuristic = {"level": "suspicious", "flags": ["ip_literal_host"]}
+    report = format_report(
+        "https://185.220.101.4/x", "185.220.101.4",
+        SKIPPED_VT, SKIPPED_UH, SKIPPED_GSB, heuristic,
+    )
+    assert "lokal tahlil" in report
+    assert "ip_literal_host" in report
+    assert "SHUBHALI" in report
+
+
+def test_format_report_heuristic_dangerous_wins():
+    heuristic = {"level": "dangerous", "flags": ["js_capture:getusermedia"]}
+    report = format_report(
+        "https://evilsite.top/cam", "evilsite.top",
+        SKIPPED_VT, SKIPPED_UH, SKIPPED_GSB, heuristic,
+    )
+    assert "kamera" in report or "XAVFLI" in report
+
+
+def test_format_report_clean_heuristic_no_line():
+    heuristic = {"level": "none", "flags": []}
+    report = format_report(
+        "https://example.com", "example.com",
+        SKIPPED_VT, SKIPPED_UH, SKIPPED_GSB, heuristic,
+    )
+    assert "lokal tahlil" not in report
+
+
+def test_format_report_without_heuristic_no_line():
+    report = format_report("https://example.com", "example.com", SKIPPED_VT, SKIPPED_UH, SKIPPED_GSB)
+    assert "lokal tahlil" not in report
+
+
+# ---------- APK document handling ----------
+
+
+async def test_apk_document_private_chat_rejected(make_message):
+    document = SimpleNamespace(file_name="evil-app.apk")
+    message = make_message(document=document, chat=SimpleNamespace(id=42, type="private"))
+    await analyze_module.handle_document(message)
+    assert len(message.replies) == 1
+    assert "APK" in message.replies[0][0]
+    assert "rasmiy manbalardan" in message.replies[0][0]
+
+
+async def test_apk_document_uppercase_rejected(make_message):
+    document = SimpleNamespace(file_name="Evil.APK")
+    message = make_message(document=document, chat=SimpleNamespace(id=42, type="private"))
+    await analyze_module.handle_document(message)
+    assert len(message.replies) == 1
+
+
+async def test_non_apk_document_ignored(make_message):
+    document = SimpleNamespace(file_name="book.pdf")
+    message = make_message(document=document, chat=SimpleNamespace(id=42, type="private"))
+    await analyze_module.handle_document(message)
+    assert message.replies == []
+
+
+async def test_apk_document_group_left_to_guard(make_message):
+    document = SimpleNamespace(file_name="evil.apk")
+    message = make_message(document=document, chat=SimpleNamespace(id=-100123, type="supergroup"))
+    await analyze_module.handle_document(message)
+    assert message.replies == []
+    assert not message.deleted

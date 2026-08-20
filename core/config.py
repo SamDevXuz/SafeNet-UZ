@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     mirror_webhook_domain: Optional[str] = None
     mirror_bots: str = ""
     webhook_port: int = 8000
+    heuristics_enabled: bool = True
+    page_probe_enabled: bool = True
     group_guard_block_apk: bool = True
     group_guard_warning_ttl: int = 15
 

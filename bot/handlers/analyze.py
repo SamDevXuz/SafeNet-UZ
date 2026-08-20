@@ -1,6 +1,7 @@
 import logging
+import re
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.types import Message
 
 from analyzer.analysis import (
@@ -15,14 +16,25 @@ from core.config import get_settings
 
 router = Router(name="analyze")
 
+_APK_RE = re.compile(r"\.apk\b", re.IGNORECASE)
 
-def _build_verdict(vt: dict, urlhaus: dict, gsb: dict) -> str:
-    code = verdict_code(vt, urlhaus, gsb)
+
+def _build_verdict(vt: dict, urlhaus: dict, gsb: dict, heuristic: dict | None = None) -> str:
+    code = verdict_code(vt, urlhaus, gsb, heuristic)
     if code == VERDICT_DANGEROUS:
         return "🔴 *XAVFLI* — bu havolani ochmang va hech kimga yubormang!"
     if code == VERDICT_SUSPICIOUS:
         return "🟡 *SHUBHALI* — ehtiyotkorlik bilan munosabatda bo'ling."
     return "🟢 *XAVFSIZ* — tahlil natijasiga ko'ra xavf aniqlanmadi."
+
+
+def _heuristic_line(heuristic: dict | None) -> str:
+    if not heuristic or heuristic.get("level") in (None, "none"):
+        return ""
+    level_text = "🔴 *Kritik*" if heuristic.get("level") == "dangerous" else "🟡 *Shubhali*"
+    flags = heuristic.get("flags") or []
+    flags_text = ", ".join(str(flag) for flag in flags[:6]) or "xususiyatlar aniqlandi"
+    return f"{level_text} lokal tahlil: `{flags_text}`"
 
 
 def _line_for(value: dict, label: str, done_text: str) -> str:
@@ -34,7 +46,14 @@ def _line_for(value: dict, label: str, done_text: str) -> str:
     return f"{label}: {done_text}"
 
 
-def format_report(url: str, hostname: str, vt: dict, urlhaus: dict, gsb: dict) -> str:
+def format_report(
+    url: str,
+    hostname: str,
+    vt: dict,
+    urlhaus: dict,
+    gsb: dict,
+    heuristic: dict | None = None,
+) -> str:
     vt_line = _line_for(
         vt,
         "VirusTotal",
@@ -65,6 +84,9 @@ def format_report(url: str, hostname: str, vt: dict, urlhaus: dict, gsb: dict) -
         gsb_text = ""
     gsb_line = _line_for(gsb, "Google Safe Browsing", gsb_text)
 
+    heuristic_line = _heuristic_line(heuristic)
+    heuristic_block = f"\n✅ {heuristic_line}\n" if heuristic_line else ""
+
     return (
         "🛡️ *SafeNet UZ — URL tahlili*\n\n"
         f"🔗 *Havola:* `{url}`\n"
@@ -73,8 +95,9 @@ def format_report(url: str, hostname: str, vt: dict, urlhaus: dict, gsb: dict) -
         f"✅ {vt_line}\n"
         f"✅ {uh_line}\n"
         f"✅ {gsb_line}\n"
+        f"{heuristic_block}"
         "━━━━━━━━━━━━━━━━\n\n"
-        f"*Xulosa:* {_build_verdict(vt, urlhaus, gsb)}"
+        f"*Xulosa:* {_build_verdict(vt, urlhaus, gsb, heuristic)}"
     )
 
 
@@ -118,11 +141,30 @@ async def analyze_url(message: Message) -> None:
             result.virustotal,
             result.urlhaus,
             result.google_safebrowsing,
+            result.heuristic,
         ),
         parse_mode="Markdown",
     )
 
     await _record_analysis(raw_url, parsed.hostname, result, message)
+
+
+@router.message(F.document)
+async def handle_document(message: Message) -> None:
+    document = message.document
+    file_name = (document.file_name or "").lower() if document else ""
+    if not _APK_RE.search(file_name):
+        return
+
+    if message.chat.type in {"group", "supergroup"}:
+        return
+
+    await message.answer(
+        "⛔ *APK fayl qabul qilinmadi.*\n\n"
+        "Xavfsizlik uchun bot `.apk` fayllarni qabul qilmaydi. "
+        "Faylni faqat rasmiy manbalardan o'rnating.",
+        parse_mode="Markdown",
+    )
 
 
 def _get_analysis_backend() -> tuple:

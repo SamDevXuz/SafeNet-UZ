@@ -98,9 +98,12 @@ async def test_analyze_url_creates_service_and_gathers(monkeypatch):
         urlhaus_api_key="uh",
         google_safebrowsing_api_key="gsb",
         request_timeout=5.0,
+        heuristics_enabled=False,
+        page_probe_enabled=False,
     )
     result = await analysis.analyze_url("https://example.com", settings)
     assert calls == ["virustotal", "urlhaus", "google_safebrowsing"]
+    assert result.heuristic == {"level": "none", "flags": []}
     assert seen_kwargs == [
         {
             "virustotal_api_key": "vt",
@@ -113,7 +116,7 @@ async def test_analyze_url_creates_service_and_gathers(monkeypatch):
     assert result.verdict == VERDICT_SAFE
 
 
-async def test_analyze_url_propagates_service_error(monkeypatch):
+async def test_analyze_url_degrades_on_service_error(monkeypatch):
     class BoomService:
         async def __aenter__(self) -> "BoomService":
             return self
@@ -136,6 +139,40 @@ async def test_analyze_url_propagates_service_error(monkeypatch):
         urlhaus_api_key=None,
         google_safebrowsing_api_key=None,
         request_timeout=10.0,
+        heuristics_enabled=False,
+        page_probe_enabled=False,
     )
-    with pytest.raises(RuntimeError, match="network down"):
-        await analysis.analyze_url("https://example.com", settings)
+    result = await analysis.analyze_url("https://example.com", settings)
+    assert result.virustotal["status"] == "error"
+    assert result.urlhaus["status"] == "error"
+    assert result.google_safebrowsing["status"] == "error"
+    assert result.verdict == VERDICT_SAFE
+
+# ---------- verdict heuristic strings ----------
+
+
+def test_verdict_code_heuristic_dangerous():
+    heuristic = {"level": "dangerous", "flags": ["js_capture:getusermedia"]}
+    assert verdict_code({}, {}, {}, heuristic) == VERDICT_DANGEROUS
+
+
+def test_verdict_code_heuristic_suspicious():
+    heuristic = {"level": "suspicious", "flags": ["ip_literal_host"]}
+    assert verdict_code({}, {}, {}, heuristic) == VERDICT_SUSPICIOUS
+
+
+def test_verdict_code_heuristic_none_safe():
+    heuristic = {"level": "none", "flags": []}
+    assert verdict_code({}, {}, {}, heuristic) == VERDICT_SAFE
+
+
+def test_verdict_code_api_dangerous_beats_safe_heuristic():
+    vt = {"status": "done", "malicious": 2}
+    heuristic = {"level": "none", "flags": []}
+    assert verdict_code(vt, {}, {}, heuristic) == VERDICT_DANGEROUS
+
+
+def test_verdict_code_heuristic_dangerous_overrides_suspicious_api():
+    vt = {"status": "done", "suspicious": 1}
+    heuristic = {"level": "dangerous", "flags": ["js_capture:mediadevices"]}
+    assert verdict_code(vt, {}, {}, heuristic) == VERDICT_DANGEROUS

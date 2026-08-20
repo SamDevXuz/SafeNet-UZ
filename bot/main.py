@@ -51,6 +51,7 @@ async def main() -> None:
 
     dp.include_router(start.router)
     dp.include_router(mirror.router)
+    dp.include_router(group_guard.router)
     dp.include_router(analyze.router)
 
     webhook_task: asyncio.Task | None = None
