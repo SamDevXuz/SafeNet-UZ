@@ -4,7 +4,7 @@ from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 
-from bot.handlers import analyze, mirror, start
+from bot.handlers import analyze, group_guard, mirror, start
 from core.config import get_settings
 from core.database import init_database
 from core.mirror_manager import get_mirror_manager
@@ -26,6 +26,7 @@ async def main() -> None:
         routers=[
             start.router,
             mirror.router,
+            group_guard.router,
             analyze.router,
         ],
         webhook_domain=settings.mirror_webhook_domain,

@@ -1,5 +1,8 @@
+import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
+
+URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
 
 
 @dataclass(frozen=True)

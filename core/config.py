@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     database_path: str = "data/safenetuz.db"
     mirror_webhook_domain: Optional[str] = None
     mirror_bots: str = ""
+    group_guard_block_apk: bool = True
+    group_guard_warning_ttl: int = 15
 
     @property
     def log_level_upper(self) -> str:

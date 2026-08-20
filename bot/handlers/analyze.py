@@ -1,30 +1,26 @@
-import asyncio
 import logging
-import re
 
 from aiogram import Router
 from aiogram.types import Message
 
-from analyzer.external_apis import ExternalAPIService
+from analyzer.analysis import (
+    VERDICT_DANGEROUS,
+    VERDICT_SUSPICIOUS,
+    analyze_url as analyze_safety,
+    verdict_code,
+)
+from analyzer.url_parser import URL_RE as _URL_RE
 from analyzer.url_parser import parse_url
 from core.config import get_settings
 
 router = Router(name="analyze")
 
-_URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
-
 
 def _build_verdict(vt: dict, urlhaus: dict, gsb: dict) -> str:
-    vt_done = vt.get("status") == "done"
-    if (
-        (vt_done and vt.get("malicious", 0) > 0)
-        or urlhaus.get("status") == "done"
-        and urlhaus.get("found")
-        or gsb.get("status") == "done"
-        and gsb.get("flagged")
-    ):
+    code = verdict_code(vt, urlhaus, gsb)
+    if code == VERDICT_DANGEROUS:
         return "🔴 *XAVFLI* — bu havolani ochmang va hech kimga yubormang!"
-    if vt_done and vt.get("suspicious", 0) > 0:
+    if code == VERDICT_SUSPICIOUS:
         return "🟡 *SHUBHALI* — ehtiyotkorlik bilan munosabatda bo'ling."
     return "🟢 *XAVFSIZ* — tahlil natijasiga ko'ra xavf aniqlanmadi."
 
@@ -99,17 +95,7 @@ async def analyze_url(message: Message) -> None:
     progress = await message.answer("⏳ *Tahlil boshlandi...*", parse_mode="Markdown")
 
     try:
-        async with ExternalAPIService(
-            virustotal_api_key=settings.virustotal_api_key,
-            urlhaus_api_key=settings.urlhaus_api_key,
-            google_safebrowsing_api_key=settings.google_safebrowsing_api_key,
-            timeout=settings.request_timeout,
-        ) as service:
-            vt_result, uh_result, gsb_result = await asyncio.gather(
-                service.check_virustotal_url(raw_url),
-                service.check_urlhaus(raw_url),
-                service.check_google_safebrowsing(raw_url),
-            )
+        result = await analyze_safety(raw_url, settings)
     except Exception:
         await progress.edit_text(
             "❌ *Tahlil paytida kutilmagan xatolik yuz berdi.*\n"
@@ -119,15 +105,21 @@ async def analyze_url(message: Message) -> None:
         return
 
     await progress.edit_text(
-        format_report(raw_url, parsed.hostname, vt_result, uh_result, gsb_result),
+        format_report(
+            raw_url,
+            parsed.hostname,
+            result.virustotal,
+            result.urlhaus,
+            result.google_safebrowsing,
+        ),
         parse_mode="Markdown",
     )
 
-    await _record_analysis(raw_url, parsed.hostname, vt_result, uh_result, gsb_result, message)
+    await _record_analysis(raw_url, parsed.hostname, result, message)
 
 
 async def _record_analysis(
-    url: str, hostname: str, vt: dict, urlhaus: dict, gsb: dict, message: Message
+    url: str, hostname: str, result: object, message: Message
 ) -> None:
     try:
         from core.database import get_database
@@ -137,7 +129,7 @@ async def _record_analysis(
         await get_database().record_analysis(
             url=url,
             hostname=hostname,
-            verdict=_build_verdict(vt, urlhaus, gsb),
+            verdict=str(result.verdict),
             source_bot_username=username,
         )
     except Exception:

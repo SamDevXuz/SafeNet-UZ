@@ -4,7 +4,9 @@ import pytest
 
 
 def default_user() -> SimpleNamespace:
-    return SimpleNamespace(id=1, username="test_user", first_name="Test")
+    return SimpleNamespace(
+        id=1, username="test_user", first_name="Test", full_name="Test User"
+    )
 
 
 class FakeMessage:
@@ -13,10 +15,15 @@ class FakeMessage:
         text: str | None = None,
         caption: str | None = None,
         from_user: object | None = None,
+        document: object | None = None,
+        chat: object | None = None,
     ) -> None:
         self.text = text
         self.caption = caption
         self.from_user = from_user if from_user is not None else default_user()
+        self.document = document
+        self.chat = chat if chat is not None else SimpleNamespace(id=-100123, type="group")
+        self.deleted = False
         self.replies: list[tuple[str, str | None]] = []
         self.edits: list[tuple[str, str | None]] = []
 
@@ -30,6 +37,9 @@ class FakeMessage:
         self, text: str, parse_mode: str | None = None, **kwargs: object
     ) -> None:
         self.edits.append((text, parse_mode))
+
+    async def delete(self) -> None:
+        self.deleted = True
 
 
 class FakeExternalAPIService:
@@ -54,8 +64,8 @@ class FakeExternalAPIService:
 
 @pytest.fixture
 def make_message():
-    def _make(text: str | None = None, caption: str | None = None) -> FakeMessage:
-        return FakeMessage(text=text, caption=caption)
+    def _make(text: str | None = None, caption: str | None = None, **kwargs: object) -> FakeMessage:
+        return FakeMessage(text=text, caption=caption, **kwargs)
 
     return _make
 

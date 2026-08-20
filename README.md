@@ -69,9 +69,10 @@ safenetuz/
 │   ├── middlewares/           # Bot middlewares
 │   └── main.py                # Async entry point
 ├── analyzer/
-│   ├── external_apis.py        # VirusTotal / URLhaus / Google Safe Browsing
-│   ├── url_parser.py          # URL normalization & parsing
-│   └── whois_checker.py       # WHOIS enrichment
+│   ├── analysis.py          # Shared analysis orchestration + verdict logic
+│   ├── external_apis.py     # VirusTotal / URLhaus / Google Safe Browsing
+│   ├── url_parser.py        # URL normalization & parsing
+│   └── whois_checker.py     # WHOIS enrichment
 ├── core/
 │   ├── config.py              # Typed, validated settings
 │   ├── database.py            # Shared SQLite layer (mirror bots + analyses)
@@ -129,6 +130,19 @@ Any Telegram bot owner can expand the SafeNet UZ network. From the main bot, sen
 4. Persist an entry in the shared SQLite database (`token` is stored **hashed** only).
 
 Every message received by a mirror bot is routed through the same `start` / `mirror` / `analyze` routers, so reports are analyzed identically and recorded in the **single shared database** with the main bot.
+
+### Group auto-moderation (`group_guard`)
+
+In groups and supergroups the bot stays **silent on clean traffic** but watches every message for URL links, `.apk` documents, or Telegram bot/channel mentions (`@user`, `t.me/...`). Suspicious content is analyzed **in a background task** (never blocking the group):
+
+1. A URL is checked against VirusTotal, URLhaus and Google Safe Browsing.
+2. If the verdict is **dangerous** (`malicious` / blacklisted / flagged):
+   - the message is deleted immediately,
+   - a phishing warning is posted with the sender's name,
+   - the warning is auto-deleted after `GROUP_GUARD_WARNING_TTL` seconds (default `15`).
+3. `.apk` files are moderated by policy (`GROUP_GUARD_BLOCK_APK`, default `true`) since executable drops in open groups are a primary malware vector.
+
+Requires the bot to be a group **administrator** with *Delete messages* permission.
 
 ### Threat intelligence sources
 

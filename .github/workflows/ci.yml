@@ -23,7 +23,7 @@ jobs:
         run: python -m compileall -q bot analyzer core
 
       - name: Import check
-        run: python -c "import bot.main, bot.handlers.start, bot.handlers.analyze, bot.handlers.mirror, analyzer.url_parser, analyzer.whois_checker, analyzer.external_apis, core.config, core.database, core.mirror_manager"
+        run: python -c "import bot.main, bot.handlers.start, bot.handlers.analyze, bot.handlers.mirror, bot.handlers.group_guard, analyzer.url_parser, analyzer.whois_checker, analyzer.external_apis, analyzer.analysis, core.config, core.database, core.mirror_manager"
 
       - name: Run tests
         run: python -m pytest -v

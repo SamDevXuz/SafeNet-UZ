@@ -1,5 +1,6 @@
 import bot.handlers.analyze as analyze_module
 import bot.handlers.start as start_module
+from analyzer.analysis import AnalysisResult
 from bot.handlers.analyze import _URL_RE, format_report
 
 
@@ -7,17 +8,23 @@ SKIPPED_VT = {"status": "skipped", "source": "virustotal"}
 SKIPPED_UH = {"status": "skipped", "source": "urlhaus"}
 SKIPPED_GSB = {"status": "skipped", "source": "google_safebrowsing"}
 
+DANGEROUS_VT = {"status": "done", "source": "virustotal", "malicious": 3, "suspicious": 1, "harmless": 7}
+
 
 def _patch_settings(monkeypatch, make_settings) -> None:
     monkeypatch.setattr(analyze_module, "get_settings", make_settings)
 
 
-def _patch_service(monkeypatch, make_api_service, results: dict) -> None:
-    monkeypatch.setattr(
-        analyze_module,
-        "ExternalAPIService",
-        lambda **kw: make_api_service(results),
-    )
+def _patch_service(monkeypatch, results: dict) -> None:
+    async def fake_analyze_url(url, settings) -> AnalysisResult:
+        return AnalysisResult(
+            url=url,
+            virustotal=results["virustotal"],
+            urlhaus=results["urlhaus"],
+            google_safebrowsing=results["google_safebrowsing"],
+        )
+
+    monkeypatch.setattr(analyze_module, "analyze_safety", fake_analyze_url)
 
 
 # ---------- start handler ----------
@@ -118,14 +125,14 @@ async def test_analyze_no_url_replies_hint(make_message, monkeypatch, make_setti
     assert message.edits == []
 
 
-async def test_analyze_https_url_full_flow(make_message, monkeypatch, make_settings, make_api_service):
+async def test_analyze_https_url_full_flow(make_message, monkeypatch, make_settings):
     _patch_settings(monkeypatch, make_settings)
     results = {
         "virustotal": {"status": "done", "source": "virustotal", "malicious": 3, "suspicious": 1, "harmless": 7},
         "urlhaus": {"status": "skipped", "source": "urlhaus"},
         "google_safebrowsing": {"status": "skipped", "source": "google_safebrowsing"},
     }
-    _patch_service(monkeypatch, make_api_service, results)
+    _patch_service(monkeypatch, results)
     message = make_message(text="shuni tekshir https://example.com/login")
     await analyze_module.analyze_url(message)
     assert len(message.replies) == 1
@@ -137,28 +144,28 @@ async def test_analyze_https_url_full_flow(make_message, monkeypatch, make_setti
     assert "XAVFLI" in report
 
 
-async def test_analyze_www_url_without_scheme(make_message, monkeypatch, make_settings, make_api_service):
+async def test_analyze_www_url_without_scheme(make_message, monkeypatch, make_settings):
     _patch_settings(monkeypatch, make_settings)
     results = {
         "virustotal": SKIPPED_VT,
         "urlhaus": SKIPPED_UH,
         "google_safebrowsing": SKIPPED_GSB,
     }
-    _patch_service(monkeypatch, make_api_service, results)
+    _patch_service(monkeypatch, results)
     message = make_message(text="www.shubhali.uz/enter")
     await analyze_module.analyze_url(message)
     assert len(message.edits) == 1
     assert "www.shubhali.uz" in message.edits[0][0]
 
 
-async def test_analyze_caption_url(make_message, monkeypatch, make_settings, make_api_service):
+async def test_analyze_caption_url(make_message, monkeypatch, make_settings):
     _patch_settings(monkeypatch, make_settings)
     results = {
         "virustotal": SKIPPED_VT,
         "urlhaus": SKIPPED_UH,
         "google_safebrowsing": SKIPPED_GSB,
     }
-    _patch_service(monkeypatch, make_api_service, results)
+    _patch_service(monkeypatch, results)
     message = make_message(caption="foto tagida: https://t.me/fake_channel")
     await analyze_module.analyze_url(message)
     assert len(message.edits) == 1
@@ -168,23 +175,10 @@ async def test_analyze_caption_url(make_message, monkeypatch, make_settings, mak
 async def test_analyze_unexpected_error_shows_warning(make_message, monkeypatch, make_settings):
     _patch_settings(monkeypatch, make_settings)
 
-    class BoomService:
-        async def __aenter__(self) -> "BoomService":
-            return self
+    async def boom_analyze(url, settings) -> AnalysisResult:
+        raise RuntimeError("boom")
 
-        async def __aexit__(self, *args: object) -> None:
-            return None
-
-        async def check_virustotal_url(self, url: str) -> dict:
-            raise RuntimeError("boom")
-
-        async def check_urlhaus(self, url: str) -> dict:
-            return SKIPPED_UH
-
-        async def check_google_safebrowsing(self, url: str) -> dict:
-            return SKIPPED_GSB
-
-    monkeypatch.setattr(analyze_module, "ExternalAPIService", lambda **kw: BoomService())
+    monkeypatch.setattr(analyze_module, "analyze_safety", boom_analyze)
     message = make_message(text="https://example.com")
     await analyze_module.analyze_url(message)
     assert len(message.edits) == 1
