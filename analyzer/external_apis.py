@@ -21,14 +21,19 @@ class ExternalAPIService:
         urlhaus_api_key: str | None = None,
         google_safebrowsing_api_key: str | None = None,
         timeout: float = 10.0,
+        client: httpx.AsyncClient | None = None,
     ) -> None:
         self.virustotal_api_key = virustotal_api_key
         self.urlhaus_api_key = urlhaus_api_key
         self.google_safebrowsing_api_key = google_safebrowsing_api_key
-        self._client = httpx.AsyncClient(timeout=timeout, follow_redirects=False)
+        self._client = client or httpx.AsyncClient(
+            timeout=timeout, follow_redirects=False
+        )
+        self._owns_client = client is None
 
     async def close(self) -> None:
-        await self._client.aclose()
+        if self._owns_client:
+            await self._client.aclose()
 
     async def __aenter__(self) -> "ExternalAPIService":
         return self
@@ -96,12 +101,19 @@ class ExternalAPIService:
             return {"status": "error", "source": "urlhaus", "reason": "parse"}
         if data.get("query_status") != "ok":
             return {"status": "done", "source": "urlhaus", "found": False}
+        blacklists_raw = data.get("blacklists") or {}
+        if isinstance(blacklists_raw, dict):
+            blacklist_count = sum(
+                1 for value in blacklists_raw.values() if value == "listed"
+            )
+        else:
+            blacklist_count = int(blacklists_raw) if blacklists_raw else 0
         return {
             "status": "done",
             "source": "urlhaus",
             "found": True,
             "threat": data.get("threat"),
-            "blacklist_count": int(data.get("blacklists") or 0),
+            "blacklist_count": blacklist_count,
             "reference": data.get("urlhaus_reference"),
         }
 

@@ -160,6 +160,17 @@ We welcome contributors of all levels.
 - Add a test case for every new analyzer rule.
 - Run `python -m compileall -q bot analyzer core` before pushing.
 
+### Testing
+
+The test-suite uses `pytest` + `pytest-asyncio` and runs **without any network or real API keys** (httpx `MockTransport` + fakes):
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest -v
+```
+
+Coverage: config loading, URL parsing, WHOIS (mocked), all `ExternalAPIService` branches (skipped / done / http / network / parse errors), report formatting, verdict logic and both Telegram handlers.
+
 ## Security policy
 
 ### Reporting a vulnerability
