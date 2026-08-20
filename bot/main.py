@@ -57,9 +57,7 @@ async def main() -> None:
             async def __call__(self, handler, event, data):
                 if isinstance(event, UpdateType):
                     payload = event.model_dump(exclude_none=True)
-                    logging.getLogger("apidebug").info(
-                        "IN update=%s", str(payload)[:1200]
-                    )
+                    logging.warning("APIDEBUG IN update=%s", str(payload)[:1200])
                 return await handler(event, data)
 
         dp.update.outer_middleware(_UpdateLogger())
