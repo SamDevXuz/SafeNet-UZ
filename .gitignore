@@ -90,8 +90,7 @@ out/
 docker-volumes/
 
 # System
-core
-core.*
+core.[0-9]*
 *.pid
 *.seed
 *.pid.lock

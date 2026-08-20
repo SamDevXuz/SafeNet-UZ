@@ -67,6 +67,7 @@ safenetuz/
 │   ├── middlewares/           # Bot middlewares
 │   └── main.py                # Async entry point
 ├── analyzer/
+│   ├── external_apis.py        # VirusTotal / URLhaus / Google Safe Browsing
 │   ├── url_parser.py          # URL normalization & parsing
 │   └── whois_checker.py       # WHOIS enrichment
 ├── core/
@@ -106,7 +107,21 @@ Then fill `.env` with your bot token (from [@BotFather](https://t.me/BotFather))
 ```
 BOT_TOKEN=1234567890:AAE...
 LOG_LEVEL=INFO
+VIRUSTOTAL_API_KEY=
+URLHAUS_API_KEY=
+GOOGLE_SAFEBROWSING_API_KEY=
 ```
+
+> `bot_token` is required and stored as a `SecretStr` — it is never logged or exposed.
+> All threat-intelligence keys are **optional**: without them the bot gracefully skips those checks (`status: skipped`) instead of failing.
+
+### Threat intelligence sources
+
+| Service | Key | Detects |
+|---|---|---|
+| [VirusTotal v3](https://docs.virustotal.com) | Free (VT account) | Malicious / suspicious / harmless engine votes |
+| [URLhaus](https://urlhaus-api.abuse.ch/) | Free ([auth.abuse.ch](https://auth.abuse.ch/), `Auth-Key` header) | Active malware distribution URLs |
+| [Google Safe Browsing v4](https://developers.google.com/safe-browsing/v4) | Free (Google Cloud Console) | `MALWARE`, `SOCIAL_ENGINEERING`, `UNWANTED_SOFTWARE` |
 
 ### 2. Run locally
 
