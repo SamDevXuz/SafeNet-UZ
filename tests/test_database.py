@@ -1,11 +1,12 @@
 import pytest
 
-from core.database import Database, hash_token
+from database.models import hash_token
+from database.session import Database
 
 
 @pytest.fixture
 async def database(tmp_path):
-    db = Database(str(tmp_path / "test.db"))
+    db = Database(f"sqlite+aiosqlite:///{tmp_path}/test.db")
     await db.connect()
     yield db
     await db.close()
@@ -51,6 +52,17 @@ async def test_record_and_count_analyses(database):
 
 
 async def test_unconnected_db_raises(tmp_path):
-    db = Database(str(tmp_path / "new.db"))
+    db = Database(f"sqlite+aiosqlite:///{tmp_path}/new.db")
     with pytest.raises(RuntimeError):
         await db.record_bot("tok", "@a", "A", "polling")
+
+
+async def test_init_and_get_globals(monkeypatch, tmp_path):
+    import database.session as session_module
+
+    monkeypatch.setattr(session_module, "_database", None)
+    db = session_module.init_database(f"sqlite+aiosqlite:///{tmp_path}/glob.db")
+    assert session_module.get_database() is db
+    monkeypatch.setattr(session_module, "_database", None)
+    with pytest.raises(RuntimeError):
+        session_module.get_database()

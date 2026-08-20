@@ -20,10 +20,10 @@ jobs:
         run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Syntax check
-        run: python -m compileall -q bot analyzer core
+        run: python -m compileall -q bot analyzer core database
 
       - name: Import check
-        run: python -c "import bot.main, bot.handlers.start, bot.handlers.analyze, bot.handlers.mirror, bot.handlers.group_guard, analyzer.url_parser, analyzer.whois_checker, analyzer.external_apis, analyzer.analysis, core.config, core.database, core.mirror_manager"
+        run: python -c "import bot.main, bot.handlers.start, bot.handlers.analyze, bot.handlers.mirror, bot.handlers.group_guard, analyzer.url_parser, analyzer.whois_checker, analyzer.external_apis, analyzer.analysis, analyzer.pipeline, core.config, core.mirror_manager, database.models, database.session, database.cache"
 
       - name: Run tests
         run: python -m pytest -v

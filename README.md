@@ -39,6 +39,7 @@
 | 📚 Global blacklists | Crowdsourced denial-of-service for phishing networks |
 | 🤖 Telegram-first UX | Zero-install reporting via [Aiogram 3.x](https://docs.aiogram.dev) |
 | ⚡ Async by design | Non-blocking analysis with `httpx` + `asyncio` |
+| 🗄️ Fast lookups | Redis kesh (TTL) + SQLAlchemy 2.x ORM (SQLite/PostgreSQL) |
 | 🔁 Mirror bots | Community Telegram bots join the network via `/addbot` and share the same analyzers + database |
 
 ## Architecture
@@ -71,12 +72,16 @@ safenetuz/
 ├── analyzer/
 │   ├── analysis.py          # Shared analysis orchestration + verdict logic
 │   ├── external_apis.py     # VirusTotal / URLhaus / Google Safe Browsing
+│   ├── pipeline.py          # Kesh → DB → External → saqlash konveyeri
 │   ├── url_parser.py        # URL normalization & parsing
 │   └── whois_checker.py     # WHOIS enrichment
 ├── core/
 │   ├── config.py              # Typed, validated settings
-│   ├── database.py            # Shared SQLite layer (mirror bots + analyses)
 │   └── mirror_manager.py      # Mirror bot validation, branding & runtime
+├── database/
+│   ├── models.py              # SQLAlchemy 2.x ORM: ThreatURL, ThreatAPK, MirrorBot, Analysis
+│   ├── session.py             # Async engine/session (SQLite yoki PostgreSQL)
+│   └── cache.py               # Redis kesh (TTL: clean 24h, malicious 30d)
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
@@ -89,6 +94,8 @@ safenetuz/
 - **Aiogram 3.x** — Telegram Bot API
 - **httpx** — async HTTP probing
 - **dnspython** & **python-whois** — DNS/WHOIS enrichment
+- **SQLAlchemy 2.x** — async ORM (SQLite via `aiosqlite`, PostgreSQL via `asyncpg`)
+- **Redis** — kesh (natsangi natijalar uchun TTL)
 - **pydantic** & **pydantic-settings** — safe, validated configuration
 - **Docker & Docker Compose** — containerized deployment
 
@@ -115,10 +122,38 @@ LOG_LEVEL=INFO
 VIRUSTOTAL_API_KEY=
 URLHAUS_API_KEY=
 GOOGLE_SAFEBROWSING_API_KEY=
+
+# Ma'lumotlar bazasi (SQLite default; Postgres uchun boshqa DSN)
+DATABASE_URL=sqlite+aiosqlite:///data/safenetuz.db
+# DATABASE_URL=postgresql+asyncpg://safenetuz:safenetuz@localhost:5432/safenetuz
+
+# Redis kesh (TTL: clean 24 soat, malicious 30 kun)
+REDIS_URL=redis://localhost:6379/0
+CACHE_TTL_CLEAN=86400
+CACHE_TTL_MALICIOUS=2592000
 ```
 
 > `bot_token` is required and stored as a `SecretStr` — it is never logged or exposed.
 > All threat-intelligence keys are **optional**: without them the bot gracefully skips those checks (`status: skipped`) instead of failing.
+
+### Data layer & analysis pipeline
+
+Every URL goes through a fast, layered pipeline in `analyzer/pipeline.py`, precisely in this order:
+
+```
+1. Redis kesh (url_hash={sha256}) → bir xil natija tez qaytariladi (TTL: clean 24h / malicious 30d)
+        │ (miss)
+        ▼
+2. SQLAlchemy DB (threat_urls jadvali) → avvalgi tahlil bor bo'lsa qaytariladi (kesh yangilanadi)
+        │ (miss)
+        ▼
+3. Tashqi API'lar (VirusTotal, URLhaus, Google Safe Browsing) + static parser (url_parser)
+        │
+        ▼
+4. Natija DB + Redis ga saqlanadi va qaytariladi
+```
+
+`ThreatURL` modeli: `url_hash` (SHA-256, indexed), `original_url`, `domain`, `status` (`malicious`/`clean`), `threat_type` (`phishing`/`malware`/`bot`), `source` (`user_report`/`external_api`). APK fayllari uchun `ThreatAPK` (`file_hash`, `file_name`, `package_name`, `status`, `malicious_score`) mavjud. Kesh/DB andozilari halokatli emas — tashqi xizmatlar ishlamasa ham tahlil davom etadi.
 
 ### Mirror bots (`/addbot`)
 
@@ -127,7 +162,7 @@ Any Telegram bot owner can expand the SafeNet UZ network. From the main bot, sen
 1. Validate the token via `get_me()`.
 2. Set SafeNet UZ branding: commands, description, short description and `assets/logo.{png,jpg,jpeg}` as profile photo (any format is auto-cropped to a square 640×640 via Pillow).
 3. Register the bot for **dynamic polling** (default) or a **webhook** when `MIRROR_WEBHOOK_DOMAIN` is configured (`https://<domain>/webhook/mirror/<token>`).
-4. Persist an entry in the shared SQLite database (`token` is stored **hashed** only).
+4. Persist an entry in the shared SQLAlchemy database (`token` is stored **hashed** only).
 
 Every message received by a mirror bot is routed through the same `start` / `mirror` / `analyze` routers, so reports are analyzed identically and recorded in the **single shared database** with the main bot.
 
@@ -167,6 +202,19 @@ docker compose up -d --build
 docker compose logs -f bot
 ```
 
+Redis compose servisi bilan birga ishga tushadi. PostgreSQL faqat `full` profilda:
+
+```bash
+docker compose --profile full up -d
+```
+
+Keyin `.env` da:
+
+```
+DATABASE_URL=postgresql+asyncpg://safenetuz:safenetuz@db:5432/safenetuz
+REDIS_URL=redis://redis:6379/0
+```
+
 ### 4. Verify the pipeline
 
 Start the bot, open your chat, and send `/start` followed by a test URL. The reporting flow returns a structured analysis verdict.
@@ -187,7 +235,7 @@ We welcome contributors of all levels.
 - Python 3.11+, type hints required for all public functions.
 - Secrets must never reach code, logs, or commits.
 - Add a test case for every new analyzer rule.
-- Run `python -m compileall -q bot analyzer core` before pushing.
+- Run `python -m compileall -q bot analyzer core database` before pushing.
 
 ### Testing
 
@@ -198,7 +246,7 @@ pip install -r requirements-dev.txt
 python -m pytest -v
 ```
 
-Coverage: config loading, URL parsing, WHOIS (mocked), all `ExternalAPIService` branches (skipped / done / http / network / parse errors), report formatting, verdict logic and both Telegram handlers.
+Coverage: config loading, URL parsing, WHOIS (mocked), all `ExternalAPIService` branches (skipped / done / http / network / parse errors), report formatting, verdict logic, Telegram handlers, SQLAlchemy models (`ThreatURL`/`ThreatAPK`), the analysis pipeline (kesh → DB → external → save order) and the Redis cache (via `fakeredis`).
 
 ## Security policy
 

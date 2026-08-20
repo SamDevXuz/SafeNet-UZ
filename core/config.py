@@ -19,7 +19,10 @@ class Settings(BaseSettings):
     virustotal_api_key: Optional[str] = None
     urlhaus_api_key: Optional[str] = None
     google_safebrowsing_api_key: Optional[str] = None
-    database_path: str = "data/safenetuz.db"
+    database_url: str = "sqlite+aiosqlite:///data/safenetuz.db"
+    redis_url: str = "redis://localhost:6379/0"
+    cache_ttl_clean: int = 86400
+    cache_ttl_malicious: int = 2592000
     mirror_webhook_domain: Optional[str] = None
     mirror_bots: str = ""
     group_guard_block_apk: bool = True

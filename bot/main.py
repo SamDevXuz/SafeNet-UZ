@@ -1,13 +1,13 @@
 import asyncio
 import logging
-from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 
 from bot.handlers import analyze, group_guard, mirror, start
 from core.config import get_settings
-from core.database import init_database
 from core.mirror_manager import get_mirror_manager
+from database.cache import init_cache
+from database.session import init_database
 
 
 async def main() -> None:
@@ -18,9 +18,20 @@ async def main() -> None:
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
 
-    Path(settings.database_path).parent.mkdir(parents=True, exist_ok=True)
-    database = init_database(settings.database_path)
+    if settings.database_url.startswith("sqlite"):
+        from pathlib import Path
+
+        db_file = settings.database_url.split("///", 1)[1]
+        Path(db_file).parent.mkdir(parents=True, exist_ok=True)
+
+    database = init_database(settings.database_url)
     await database.connect()
+
+    cache = init_cache(
+        url=settings.redis_url,
+        ttl_clean=settings.cache_ttl_clean,
+        ttl_malicious=settings.cache_ttl_malicious,
+    )
 
     manager = get_mirror_manager(
         routers=[
@@ -48,6 +59,7 @@ async def main() -> None:
         await manager.stop()
         await bot.session.close()
         await database.close()
+        await cache.close()
 
 
 if __name__ == "__main__":

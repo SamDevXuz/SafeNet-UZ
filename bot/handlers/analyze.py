@@ -6,9 +6,9 @@ from aiogram.types import Message
 from analyzer.analysis import (
     VERDICT_DANGEROUS,
     VERDICT_SUSPICIOUS,
-    analyze_url as analyze_safety,
     verdict_code,
 )
+from analyzer.pipeline import SOURCE_USER_REPORT, check_url as pipeline_check_url
 from analyzer.url_parser import URL_RE as _URL_RE
 from analyzer.url_parser import parse_url
 from core.config import get_settings
@@ -95,7 +95,14 @@ async def analyze_url(message: Message) -> None:
     progress = await message.answer("⏳ *Tahlil boshlandi...*", parse_mode="Markdown")
 
     try:
-        result = await analyze_safety(raw_url, settings)
+        cache, database = _get_analysis_backend()
+        result = await pipeline_check_url(
+            raw_url,
+            cache=cache,
+            database=database,
+            settings=settings,
+            source=SOURCE_USER_REPORT,
+        )
     except Exception:
         await progress.edit_text(
             "❌ *Tahlil paytida kutilmagan xatolik yuz berdi.*\n"
@@ -118,15 +125,34 @@ async def analyze_url(message: Message) -> None:
     await _record_analysis(raw_url, parsed.hostname, result, message)
 
 
+def _get_analysis_backend() -> tuple:
+    cache = None
+    database = None
+    try:
+        from database.cache import get_cache
+
+        cache = get_cache()
+    except RuntimeError:
+        pass
+    try:
+        from database.session import get_database
+
+        database = get_database()
+    except RuntimeError:
+        pass
+    return cache, database
+
+
 async def _record_analysis(
     url: str, hostname: str, result: object, message: Message
 ) -> None:
     try:
-        from core.database import get_database
+        from database.session import get_database
 
+        database = get_database()
         author = getattr(message, "from_user", None)
         username = getattr(author, "username", None) if author else None
-        await get_database().record_analysis(
+        await database.record_analysis(
             url=url,
             hostname=hostname,
             verdict=str(result.verdict),

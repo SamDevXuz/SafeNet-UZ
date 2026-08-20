@@ -10,6 +10,39 @@ services:
     networks:
       - safenetuz
 
+  redis:
+    image: redis:7-alpine
+    container_name: safenetuz-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks:
+      - safenetuz
+
+  # Postgres faqat "full" profilda ishga tushadi:
+  #   docker compose --profile full up -d
+  # Keyin .env da quyidagi bilan ulang:
+  #   DATABASE_URL=postgresql+asyncpg://safenetuz:safenetuz@db:5432/safenetuz
+  #   REDIS_URL=redis://redis:6379/0
+  db:
+    image: postgres:16-alpine
+    container_name: safenetuz-db
+    restart: unless-stopped
+    profiles: ["full"]
+    environment:
+      POSTGRES_USER: safenetuz
+      POSTGRES_PASSWORD: safenetuz
+      POSTGRES_DB: safenetuz
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - safenetuz
+
 networks:
   safenetuz:
     driver: bridge
+
+volumes:
+  redis-data:
+  db-data:

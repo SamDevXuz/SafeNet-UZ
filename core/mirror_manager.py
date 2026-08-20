@@ -10,7 +10,8 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BotCommand, FSInputFile
 
-from core.database import get_database, hash_token
+from database.models import hash_token
+from database.session import get_database
 
 logger = logging.getLogger(__name__)
 

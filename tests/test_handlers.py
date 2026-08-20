@@ -1,6 +1,7 @@
 import bot.handlers.analyze as analyze_module
 import bot.handlers.start as start_module
-from analyzer.analysis import AnalysisResult
+from analyzer.analysis import verdict_code
+from analyzer.pipeline import URLScanResult, status_from_verdict
 from bot.handlers.analyze import _URL_RE, format_report
 
 
@@ -16,15 +17,22 @@ def _patch_settings(monkeypatch, make_settings) -> None:
 
 
 def _patch_service(monkeypatch, results: dict) -> None:
-    async def fake_analyze_url(url, settings) -> AnalysisResult:
-        return AnalysisResult(
+    async def fake_check_url(url, *, cache=None, database=None, settings=None, source="user_report"):
+        return URLScanResult(
             url=url,
+            verdict=verdict_code(results["virustotal"], results["urlhaus"], results["google_safebrowsing"]),
+            status=status_from_verdict(
+                verdict_code(results["virustotal"], results["urlhaus"], results["google_safebrowsing"])
+            ),
+            threat_type=None,
+            source=source,
+            cached=False,
             virustotal=results["virustotal"],
             urlhaus=results["urlhaus"],
             google_safebrowsing=results["google_safebrowsing"],
         )
 
-    monkeypatch.setattr(analyze_module, "analyze_safety", fake_analyze_url)
+    monkeypatch.setattr(analyze_module, "pipeline_check_url", fake_check_url)
 
 
 # ---------- start handler ----------
@@ -175,10 +183,10 @@ async def test_analyze_caption_url(make_message, monkeypatch, make_settings):
 async def test_analyze_unexpected_error_shows_warning(make_message, monkeypatch, make_settings):
     _patch_settings(monkeypatch, make_settings)
 
-    async def boom_analyze(url, settings) -> AnalysisResult:
+    async def boom_check(url, **kwargs) -> URLScanResult:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(analyze_module, "analyze_safety", boom_analyze)
+    monkeypatch.setattr(analyze_module, "pipeline_check_url", boom_check)
     message = make_message(text="https://example.com")
     await analyze_module.analyze_url(message)
     assert len(message.edits) == 1
